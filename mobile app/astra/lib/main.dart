@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'screens/safety_map_screen.dart';
 void main() {
   runApp(const AstraApp());
 }
@@ -207,8 +208,8 @@ class SosScreen extends StatelessWidget {
   }
 }
 
-class SafetyMapScreen extends StatelessWidget {
-  const SafetyMapScreen({super.key});
+class safety_map_screen extends StatelessWidget {
+  const safety_map_screen({super.key});
 
   @override
   Widget build(BuildContext context) {
