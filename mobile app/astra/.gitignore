@@ -43,3 +43,11 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+# Python cache
+__pycache__/
+*.pyc
+
+# Flutter generated plugin files (platform-specific)
+linux/flutter/generated*
+macos/Flutter/Generated*
+windows/flutter/generated*
