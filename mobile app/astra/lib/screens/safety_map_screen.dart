@@ -19,18 +19,18 @@ class SafetyMapScreen extends StatefulWidget {
 class _SafetyMapScreenState extends State<SafetyMapScreen> {
   final MapController _mapController = MapController();
 
-  // Backend base url (your FastAPI service)
+  // Local FastAPI backend
   String get _baseUrl => "http://127.0.0.1:8000";
 
   LatLng? _me;
   String? _error;
   bool _loadingLocation = false;
 
-  // Nearby real places
+  // Nearby police/hospitals returned by backend (/nearby)
   bool _loadingNearby = false;
   List<_Place> _nearby = [];
 
-  // Route
+  // Routing data returned by backend (/route)
   bool _loadingRoute = false;
   List<LatLng> _routePoints = [];
   bool _showRoute = false;
@@ -38,16 +38,16 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> {
   double? _routeDistanceM;
   double? _routeDurationS;
 
-  // Demo overlays
+  // Simple overlays + filters (demo)
   bool _showUnsafeZones = true;
   String _timeFilter = "All"; // All / Morning / Evening / Night
 
-  // Search (IMPORTANT: do NOT setState on each keystroke)
+  // Search box: debounced to avoid rebuilding the whole page while typing
   final TextEditingController _searchCtrl = TextEditingController();
   final ValueNotifier<String> _searchText = ValueNotifier<String>("");
   Timer? _searchDebounce;
 
-  // Demo destination chips (fallback)
+  // Demo destination chips (fallback if you don’t route to a real selected POI)
   final List<_DemoPlace> _demoPlaces = const [
     _DemoPlace("Demo Police Station", LatLng(51.5072, -0.1276)),
     _DemoPlace("Demo Hospital", LatLng(51.5010, -0.1180)),
@@ -55,7 +55,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> {
     _DemoPlace("Demo Train Station", LatLng(51.5055, -0.1110)),
   ];
 
-  // Reports (in-memory demo)
+  // User safety reports (in-memory demo)
   final List<_SafetyReport> _reports = [
     _SafetyReport(
       id: "r1",
@@ -77,6 +77,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> {
     ),
   ];
 
+  // Demo “unsafe zones” overlay circles
   final List<CircleMarker> _unsafeCircles = const [
     CircleMarker(
       point: LatLng(51.5042, -0.1085),
@@ -110,9 +111,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> {
     super.dispose();
   }
 
-  // -------------------------
-  // Location
-  // -------------------------
+  // Gets the user location (web/browser permission required)
   Future<void> _loadLocation() async {
     setState(() {
       _loadingLocation = true;
@@ -130,6 +129,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> {
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
+
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
         setState(() => _error = "Location permission denied in browser.");
@@ -147,19 +147,19 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> {
         _error = null;
       });
 
+      // Move map to my position
       _mapController.move(me, 15);
 
-      // Load real nearby places once we have location
+      // Then load nearby places from backend
       await _loadNearby();
     } catch (e) {
       setState(() => _error = "Couldn’t access location.\n$e");
     } finally {
-      if (mounted) {
-        setState(() => _loadingLocation = false);
-      }
+      if (mounted) setState(() => _loadingLocation = false);
     }
   }
 
+  // Demo location button for quick testing/presentation
   Future<void> _useDemoLocation() async {
     final demo = const LatLng(51.5045, -0.1090);
     setState(() {
@@ -170,9 +170,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> {
     await _loadNearby();
   }
 
-  // -------------------------
-  // Nearby real police/hospitals (UPDATED)
-  // -------------------------
+  // Calls /nearby to fetch police stations + hospitals around current location
   Future<void> _loadNearby() async {
     if (_me == null) return;
 
@@ -186,7 +184,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> {
       final res = await http.get(uri);
       final data = jsonDecode(res.body) as Map<String, dynamic>;
 
-      // IMPORTANT: backend returns ok:true/false
+      // Backend returns ok:true/false
       if (data["ok"] != true) {
         debugPrint("Nearby not ok: ${data["message"]}");
         setState(() => _nearby = []);
@@ -195,26 +193,21 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> {
 
       final items = List<Map<String, dynamic>>.from(data["items"] ?? []);
 
-      final places = items.map((m) {
-        return _Place(
-          type: (m["type"] ?? "unknown").toString(),
-          name: (m["name"] ?? "Unknown place").toString(),
-          lat: (m["lat"] as num).toDouble(),
-          lon: (m["lon"] as num).toDouble(),
-          phone: (m["phone"] ?? "").toString(),
-        );
-      }).toList();
-
-      debugPrint("Nearby loaded: ${places.length}");
-      if (places.isNotEmpty) {
-        debugPrint(
-          "First nearby: ${places.first.name} @ ${places.first.lat}, ${places.first.lon}",
-        );
-      }
+      final places = items
+          .map(
+            (m) => _Place(
+              type: (m["type"] ?? "unknown").toString(),
+              name: (m["name"] ?? "Unknown place").toString(),
+              lat: (m["lat"] as num).toDouble(),
+              lon: (m["lon"] as num).toDouble(),
+              phone: (m["phone"] ?? "").toString(),
+            ),
+          )
+          .toList();
 
       setState(() => _nearby = places);
 
-      // Optional: auto-fit view to include nearby markers so you can SEE change
+      // Auto-fit so nearby markers are clearly visible during demo
       if (places.isNotEmpty) {
         final pts = <LatLng>[
           _me!,
@@ -233,23 +226,22 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> {
     }
   }
 
-  // -------------------------
-  // Route helpers (smoothness)
-  // -------------------------
+  // Reduces number of route points to keep map smoother (especially on web)
   List<LatLng> _downsample(List<LatLng> pts, {int maxPoints = 250}) {
     if (pts.length <= maxPoints) return pts;
+
     final step = (pts.length / maxPoints).ceil();
     final out = <LatLng>[];
+
     for (int i = 0; i < pts.length; i += step) {
       out.add(pts[i]);
     }
+
     if (out.isEmpty || out.last != pts.last) out.add(pts.last);
     return out;
   }
 
-  // -------------------------
-  // Route (real, via backend /route)
-  // -------------------------
+  // Fetches a real route polyline from backend and draws it on map
   Future<void> _fetchRouteTo(_Place place) async {
     if (_me == null) return;
 
@@ -263,13 +255,15 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> {
     });
 
     try {
-      final uri = Uri.parse("$_baseUrl/route").replace(queryParameters: {
-        "start_lat": _me!.latitude.toString(),
-        "start_lon": _me!.longitude.toString(),
-        "end_lat": place.lat.toString(),
-        "end_lon": place.lon.toString(),
-        "profile": "foot",
-      });
+      final uri = Uri.parse("$_baseUrl/route").replace(
+        queryParameters: {
+          "start_lat": _me!.latitude.toString(),
+          "start_lon": _me!.longitude.toString(),
+          "end_lat": place.lat.toString(),
+          "end_lon": place.lon.toString(),
+          "profile": "foot",
+        },
+      );
 
       final res = await http.get(uri);
       if (res.statusCode != 200) {
@@ -282,10 +276,12 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> {
       }
 
       final rawPts = (data["points"] as List)
-          .map((p) => LatLng(
-                (p["lat"] as num).toDouble(),
-                (p["lon"] as num).toDouble(),
-              ))
+          .map(
+            (p) => LatLng(
+              (p["lat"] as num).toDouble(),
+              (p["lon"] as num).toDouble(),
+            ),
+          )
           .toList();
 
       final pts = _downsample(rawPts, maxPoints: 250);
@@ -326,10 +322,11 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> {
     });
   }
 
-  // Demo route (for demo chips only)
+  // Quick demo route (only for demo chips)
   List<LatLng> _buildFakeRoute(LatLng a, LatLng b) {
     final points = <LatLng>[];
     const steps = 12;
+
     for (int i = 0; i <= steps; i++) {
       final t = i / steps;
       final lat = a.latitude + (b.latitude - a.latitude) * t;
@@ -342,6 +339,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> {
 
   void _selectDemoDestination(_DemoPlace place) {
     if (_me == null) return;
+
     setState(() {
       _showRoute = true;
       _routePoints = _buildFakeRoute(_me!, place.point);
@@ -363,17 +361,17 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> {
     );
   }
 
-  // -------------------------
-  // Reports
-  // -------------------------
+  // Filters reports by time of day dropdown
   List<_SafetyReport> get _filteredReports {
     if (_timeFilter == "All") return _reports;
     return _reports.where((r) => r.timeOfDay == _timeFilter).toList();
   }
 
+  // Add a report by long-pressing the map
   Future<void> _openAddReportDialog(LatLng point) async {
     final titleCtrl = TextEditingController();
     final msgCtrl = TextEditingController();
+
     String timeOfDay = "Night";
     double rating = 3;
 
@@ -413,11 +411,21 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> {
                         DropdownButton<String>(
                           value: timeOfDay,
                           items: const [
-                            DropdownMenuItem(value: "Morning", child: Text("Morning")),
-                            DropdownMenuItem(value: "Evening", child: Text("Evening")),
-                            DropdownMenuItem(value: "Night", child: Text("Night")),
+                            DropdownMenuItem(
+                              value: "Morning",
+                              child: Text("Morning"),
+                            ),
+                            DropdownMenuItem(
+                              value: "Evening",
+                              child: Text("Evening"),
+                            ),
+                            DropdownMenuItem(
+                              value: "Night",
+                              child: Text("Night"),
+                            ),
                           ],
-                          onChanged: (v) => setLocal(() => timeOfDay = v ?? "Night"),
+                          onChanged: (v) =>
+                              setLocal(() => timeOfDay = v ?? "Night"),
                         ),
                       ],
                     ),
@@ -461,7 +469,8 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> {
                 if (title.isEmpty || msg.isEmpty) return;
 
                 final report = _SafetyReport(
-                  id: "r${DateTime.now().millisecondsSinceEpoch}${Random().nextInt(9)}",
+                  id:
+                      "r${DateTime.now().millisecondsSinceEpoch}${Random().nextInt(9)}",
                   title: title,
                   message: msg,
                   timeOfDay: timeOfDay,
@@ -488,9 +497,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> {
     }
   }
 
-  // -------------------------
-  // Place popup (bottom sheet)
-  // -------------------------
+  // Bottom sheet when clicking on a nearby place marker
   void _openPlaceSheet(_Place p) {
     showModalBottomSheet(
       context: context,
@@ -502,10 +509,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                p.name,
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
+              Text(p.name, style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 6),
               Wrap(
                 spacing: 8,
@@ -513,7 +517,9 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> {
                 children: [
                   _pill("Type: ${p.type}"),
                   if (_routeDistanceM != null && _selectedPlace == p)
-                    _pill("Dist: ${(_routeDistanceM! / 1000).toStringAsFixed(2)} km"),
+                    _pill(
+                      "Dist: ${(_routeDistanceM! / 1000).toStringAsFixed(2)} km",
+                    ),
                   if (_routeDurationS != null && _selectedPlace == p)
                     _pill("ETA: ${(_routeDurationS! / 60).round()} min"),
                 ],
@@ -558,7 +564,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> {
                 )
               else
                 Text(
-                  "Phone number not available (demo / API can be extended).",
+                  "Phone number not available.",
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
             ],
@@ -570,14 +576,18 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> {
 
   Future<void> _callNumber(String phone) async {
     final uri = Uri.parse("tel:$phone");
+
     if (!await canLaunchUrl(uri)) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Calling not supported on this device/browser.")),
+          const SnackBar(
+            content: Text("Calling not supported on this device/browser."),
+          ),
         );
       }
       return;
     }
+
     await launchUrl(uri);
   }
 
@@ -592,9 +602,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> {
     );
   }
 
-  // -------------------------
-  // UI
-  // -------------------------
+  // Main page layout for this screen
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -625,12 +633,15 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> {
     );
   }
 
+  // Search UI (debounced) + status line for nearby places
   Widget _searchBar() {
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        border: Border(bottom: BorderSide(color: Colors.black.withOpacity(0.08))),
+        border: Border(
+          bottom: BorderSide(color: Colors.black.withOpacity(0.08)),
+        ),
       ),
       child: Column(
         children: [
@@ -641,8 +652,10 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> {
                   controller: _searchCtrl,
                   decoration: InputDecoration(
                     prefixIcon: const Icon(Icons.search),
-                    hintText: "Search demo places (presentation fallback)",
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    hintText: "Search for places",
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                     isDense: true,
                   ),
                   onChanged: (v) {
@@ -665,7 +678,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> {
           ),
           const SizedBox(height: 8),
 
-          // ONLY this part rebuilds while typing (not the map)
+          // Only this widget rebuilds while typing (not the map)
           ValueListenableBuilder<String>(
             valueListenable: _searchText,
             builder: (context, text, _) {
@@ -686,7 +699,8 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> {
                       .map(
                         (p) => ActionChip(
                           label: Text(p.name),
-                          onPressed: _me == null ? null : () => _selectDemoDestination(p),
+                          onPressed:
+                              _me == null ? null : () => _selectDemoDestination(p),
                         ),
                       )
                       .toList(),
@@ -695,7 +709,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> {
             },
           ),
 
-          // UPDATED: always show a status line so you KNOW it loaded
+          // Small status line so you know if nearby places actually loaded
           Align(
             alignment: Alignment.centerLeft,
             child: Padding(
@@ -704,7 +718,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> {
                 _loadingNearby
                     ? "Loading nearby police/hospitals…"
                     : (_nearby.isEmpty
-                        ? "Nearby loaded: 0 (none returned)"
+                        ? "Nearby loaded: 0"
                         : "Nearby loaded: ${_nearby.length}"),
                 style: Theme.of(context).textTheme.bodySmall,
               ),
@@ -715,12 +729,15 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> {
     );
   }
 
+  // Top controls: time filter + unsafe zone toggle + demo location
   Widget _topControls() {
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        border: Border(bottom: BorderSide(color: Colors.black.withOpacity(0.08))),
+        border: Border(
+          bottom: BorderSide(color: Colors.black.withOpacity(0.08)),
+        ),
       ),
       child: Row(
         children: [
@@ -757,6 +774,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> {
     );
   }
 
+  // Map itself (tiles + overlays + markers)
   Widget _buildMapBody() {
     if (_error != null) {
       return Center(
@@ -792,8 +810,10 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> {
       return const Center(child: CircularProgressIndicator());
     }
 
+    // Report markers
     final reportMarkers = _filteredReports.map((r) {
-      final color = r.rating <= 2 ? Colors.red : (r.rating == 3 ? Colors.orange : Colors.green);
+      final color =
+          r.rating <= 2 ? Colors.red : (r.rating == 3 ? Colors.orange : Colors.green);
 
       return Marker(
         point: r.point,
@@ -810,6 +830,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> {
       );
     }).toList();
 
+    // Nearby places markers
     final nearbyMarkers = _nearby.map((p) {
       final isPolice = p.type.toLowerCase().contains("police");
       final icon = isPolice ? Icons.local_police : Icons.local_hospital;
@@ -870,9 +891,7 @@ class _SafetyMapScreenState extends State<SafetyMapScreen> {
   }
 }
 
-// -------------------------
-// Models
-// -------------------------
+// Simple model for a user report marker
 class _SafetyReport {
   final String id;
   final String title;
@@ -893,12 +912,15 @@ class _SafetyReport {
   });
 }
 
+// Demo place used for chips/search fallback
 class _DemoPlace {
   final String name;
   final LatLng point;
+
   const _DemoPlace(this.name, this.point);
 }
 
+// Model for nearby police/hospital data from backend
 class _Place {
   final String type;
   final String name;
