@@ -21,9 +21,46 @@ class AstraApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'Astra',
       theme: ThemeData(
-        primaryColor: Colors.deepPurple,
-        scaffoldBackgroundColor: const Color(0xFFF7F5FF),
+  useMaterial3: true,
+
+  colorScheme: const ColorScheme(
+    brightness: Brightness.light,
+
+    primary: Color(0xFFD17C9A),      // dusty rose
+    onPrimary: Colors.white,
+
+    secondary: Color(0xFFB2456E),    // strong rose
+    onSecondary: Colors.white,
+
+    error: Color(0xFFB00020),
+    onError: Colors.white,
+
+    background: Color(0xFFFFF6FA),   // very light pink
+    onBackground: Colors.black87,
+
+    surface: Colors.white,
+    onSurface: Colors.black87,
+  ),
+
+  scaffoldBackgroundColor: const Color(0xFFFFF6FA),
+
+  appBarTheme: const AppBarTheme(
+    backgroundColor: Color(0xFFD17C9A),
+    foregroundColor: Colors.white,
+    elevation: 0,
+  ),
+
+  elevatedButtonTheme: ElevatedButtonThemeData(
+    style: ElevatedButton.styleFrom(
+      backgroundColor: const Color(0xFFD17C9A),
+      foregroundColor: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
       ),
+    ),
+  ),
+),
+
       home: const AstraHome(),
     );
   }
@@ -68,14 +105,14 @@ class _AstraHomeState extends State<AstraHome> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Astra'),
-        backgroundColor: Colors.deepPurple,
+        backgroundColor: Color.fromARGB(255, 219, 106, 149),
       ),
       body: _screens[_selectedIndex],
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         onTap: _onItemTapped,
         type: BottomNavigationBarType.fixed,
-        selectedItemColor: Colors.deepPurple,
+        selectedItemColor: const Color(0xFFD17C9A),
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
           BottomNavigationBarItem(icon: Icon(Icons.warning), label: 'SOS'),
@@ -88,21 +125,34 @@ class _AstraHomeState extends State<AstraHome> {
   }
 }
 
-/// Simple home screen with reassurance message
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
-      child: Text(
-        'You are safe.\nAstra is with you.',
-        textAlign: TextAlign.center,
-        style: TextStyle(fontSize: 22),
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Image.asset(
+            'assets/images/astra_logo.png',
+            height: 180,
+          ),
+          const SizedBox(height: 24),
+          const Text(
+            'You are safe.\nAstra is with you.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
       ),
     );
   }
 }
+
 
 /// AI Companion screen – connects to FastAPI backend
 class AiCompanionScreen extends StatefulWidget {
@@ -241,7 +291,7 @@ class _AiCompanionScreenState extends State<AiCompanionScreen> {
           // Send button
           ElevatedButton(
             onPressed: _loading ? null : _sendToAstra,
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple),
+            style: ElevatedButton.styleFrom(backgroundColor: Color(0xFFD17C9A)),
             child: const Text(
               "Send",
               style: TextStyle(color: Colors.white),

@@ -153,7 +153,7 @@ class _SosScreenState extends State<SosScreen> {
             const Icon(
               Icons.warning_amber_rounded,
               size: 70,
-              color: Colors.deepPurple,
+              color: Color(0xFFB2456E),
             ),
             const SizedBox(height: 16),
             const Text(
@@ -173,7 +173,7 @@ class _SosScreenState extends State<SosScreen> {
               width: double.infinity,
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: Colors.deepPurple.withOpacity(0.06),
+                color: Color(0xFFB2456E).withOpacity(0.06),
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: Colors.black12),
               ),
@@ -195,7 +195,7 @@ class _SosScreenState extends State<SosScreen> {
               height: 60,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.deepPurple,
+                 backgroundColor: const Color(0xFFB2456E),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
                   ),

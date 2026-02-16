@@ -100,7 +100,7 @@ class EmergencyContactsScreen extends StatelessWidget {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple),
+              style: ElevatedButton.styleFrom(backgroundColor: Color(0xFFB2456E)),
               onPressed: () {
                 Navigator.push(
                   context,
